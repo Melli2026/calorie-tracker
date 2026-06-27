@@ -221,6 +221,7 @@
       save(GOAL_KEY, goal);
       closeSheet();
       renderOverview();
+      renderHistory();
     });
     document.getElementById("cancel-goal").addEventListener("click", closeSheet);
   });
@@ -229,6 +230,7 @@
   let histMetric = "kcal";
   let histRange = 7; // 7 or 30 days
   const metricLabel = { kcal: "kcal", protein: "g", carbs: "g", fat: "g", water: "ml" };
+  const metricName = { kcal: "Calories", protein: "Protein", carbs: "Carbs", fat: "Fat", water: "Water" };
   const metricColor = { kcal: "var(--cal)", protein: "var(--pro)", carbs: "var(--carb)", fat: "var(--fat)", water: "#2aa7e0" };
 
   document.querySelectorAll("#chart-tabs .chip").forEach(c =>
@@ -238,6 +240,28 @@
         x.classList.toggle("active", x === c));
       renderHistory();
     }));
+
+  // Edit the goal for the currently-charted metric; the target line updates instantly.
+  document.getElementById("edit-metric-goal").addEventListener("click", () => {
+    const m = histMetric;
+    openSheet(`
+      <h3>${metricName[m]} goal</h3>
+      <div class="meta">Set your daily target. The dashed line on the chart updates to match.</div>
+      <div class="field-group">
+        <label>Daily ${metricName[m].toLowerCase()} goal (${metricLabel[m]})</label>
+        <input type="text" id="mg-val" value="${goal[m]}" inputmode="decimal" />
+      </div>
+      <button class="btn" id="mg-save">Save</button>
+      <button class="btn ghost" id="mg-cancel">Cancel</button>
+    `);
+    document.getElementById("mg-save").addEventListener("click", () => {
+      goal[m] = num("mg-val", goal[m]);
+      save(GOAL_KEY, goal);
+      closeSheet();
+      renderHistory();
+    });
+    document.getElementById("mg-cancel").addEventListener("click", closeSheet);
+  });
 
   document.querySelectorAll("#range-tabs .chip").forEach(c =>
     c.addEventListener("click", () => {
