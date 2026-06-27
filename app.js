@@ -633,6 +633,13 @@
     if (SCAN.busy) return;
     SCAN.busy = true;
     await stopReader();
+    // Already saved in my foods? Skip re-adding — go straight to logging it.
+    const existing = customFoods.find(f => f.barcode === code);
+    if (existing) {
+      await closeScan();
+      openAddSheet(existing);
+      return;
+    }
     setScanStatus(`Looking up ${code}…`);
     try {
       const food = await lookupBarcode(code);
