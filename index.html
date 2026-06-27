@@ -123,6 +123,22 @@
       </div>
     </section>
 
+    <!-- FOODS / DATABASE -->
+    <section id="view-foods" class="view">
+      <div class="card">
+        <h2>Food database</h2>
+        <div class="db-actions">
+          <button class="btn" id="scan-food">📷 Scan package</button>
+          <button class="btn secondary" id="add-food-manual">+ Add manually</button>
+        </div>
+        <div class="search-box" style="margin-top:14px;">
+          <input type="search" id="db-search" placeholder="Search database…" autocomplete="off" />
+        </div>
+        <div class="db-count" id="db-count"></div>
+        <div id="db-list"></div>
+      </div>
+    </section>
+
     <!-- BOTTOM NAV -->
     <nav class="tabbar">
       <button class="tab active" data-view="overview">
@@ -137,12 +153,30 @@
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
         Input
       </button>
+      <button class="tab" data-view="foods">
+        <svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+        Foods
+      </button>
     </nav>
   </div>
 
   <!-- Quantity / add sheet -->
   <div class="sheet-backdrop" id="sheet">
     <div class="sheet" id="sheet-content"></div>
+  </div>
+
+  <!-- Scan overlay (camera) -->
+  <div class="scan-overlay" id="scan-overlay">
+    <div class="scan-head">
+      <button id="scan-close" aria-label="Close">✕</button>
+      <span>Scan package</span>
+    </div>
+    <div id="scan-reader"></div>
+    <div class="scan-status" id="scan-status">Starting camera…</div>
+    <div class="scan-foot">
+      <button class="btn secondary" id="scan-photo">📄 Photograph the label instead</button>
+      <input type="file" id="ocr-file" accept="image/*" capture="environment" hidden />
+    </div>
   </div>
 
   <script src="foods.js"></script>
