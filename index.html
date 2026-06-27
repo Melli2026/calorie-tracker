@@ -107,7 +107,9 @@
           <span class="k">Daily average</span>
           <span class="v" id="hist-avg">0</span>
         </div>
-        <div class="bars" id="hist-bars"></div>
+        <div class="chart-plot" id="hist-bars"></div>
+        <div class="chart-labels" id="hist-labels"></div>
+        <div class="chart-legend"><span class="dash"></span> Goal <b id="hist-goal">—</b></div>
       </div>
       <div class="card">
         <h2>Daily log</h2>
@@ -131,13 +133,15 @@
     <section id="view-foods" class="view">
       <div class="card">
         <h2>Food database</h2>
+        <button class="btn" id="scan-food" style="margin-bottom:10px;">📷 Scan package</button>
         <div class="db-actions">
-          <button class="btn" id="scan-food">📷 Scan package</button>
-          <button class="btn secondary" id="add-food-manual">+ Add manually</button>
+          <button class="btn secondary" id="create-meal">🍲 New meal</button>
+          <button class="btn secondary" id="add-food-manual">✏️ New food</button>
         </div>
         <div class="search-box" style="margin-top:14px;">
-          <input type="search" id="db-search" placeholder="Search database…" autocomplete="off" />
+          <input type="search" id="db-search" placeholder="Search foods & meals…" autocomplete="off" />
         </div>
+        <div id="meal-list"></div>
         <div class="db-count" id="db-count"></div>
         <div id="db-list"></div>
       </div>
@@ -179,6 +183,10 @@
     <div class="scan-status" id="scan-status">Starting camera…</div>
     <div class="scan-foot">
       <button class="btn secondary" id="scan-photo">📄 Photograph the label instead</button>
+      <div class="scan-manual">
+        <input type="text" inputmode="numeric" id="scan-manual" placeholder="…or type the barcode digits" />
+        <button class="btn" id="scan-manual-go">Look up</button>
+      </div>
       <input type="file" id="ocr-file" accept="image/*" capture="environment" hidden />
     </div>
   </div>

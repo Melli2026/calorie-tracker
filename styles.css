@@ -145,15 +145,32 @@ input:focus { border-color: var(--accent); }
   padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .chip.active { background: var(--text); color: #fff; border-color: var(--text); }
-.bars { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 8px; }
-.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+.chart-plot {
+  position: relative; display: flex; align-items: flex-end; gap: 6px;
+  height: 150px; padding-top: 16px;
+}
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
 .bar-col .fill { width: 70%; max-width: 26px; border-radius: 6px 6px 3px 3px; min-height: 2px; transition: height .25s; }
-.bar-col .day { font-size: 11px; color: var(--muted); }
 .bar-col .amt { font-size: 10px; color: var(--muted); }
-.bars.dense { gap: 2px; }
-.bars.dense .fill { width: 100%; max-width: none; border-radius: 3px 3px 0 0; }
-.bars.dense .amt { display: none; }
-.bars.dense .day { font-size: 9px; }
+.chart-plot.dense { gap: 2px; }
+.chart-plot.dense .fill { width: 100%; max-width: none; border-radius: 3px 3px 0 0; }
+.chart-plot.dense .amt { display: none; }
+/* Goal target line overlaid on the plot */
+.target-line {
+  position: absolute; left: 0; right: 0; height: 0;
+  border-top: 2px dashed var(--text); opacity: .55; pointer-events: none;
+}
+.target-line span {
+  position: absolute; right: 0; top: -16px; font-size: 10px; font-weight: 700;
+  color: var(--text); background: var(--card); padding: 0 4px; border-radius: 4px;
+}
+.chart-labels { display: flex; gap: 6px; margin-top: 6px; }
+.chart-labels.dense { gap: 2px; }
+.chart-labels > div { flex: 1; text-align: center; font-size: 11px; color: var(--muted); }
+.chart-labels.dense > div { font-size: 9px; }
+.chart-legend { font-size: 12px; color: var(--muted); margin-top: 12px; display: flex; align-items: center; gap: 6px; }
+.chart-legend b { color: var(--text); }
+.chart-legend .dash { display: inline-block; width: 18px; border-top: 2px dashed var(--text); opacity: .55; }
 .hist-summary { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; }
 .hist-summary .k { color: var(--muted); }
 .hist-summary .v { font-weight: 700; }
@@ -204,6 +221,30 @@ input:focus { border-color: var(--accent); }
   padding: 6px; cursor: pointer; line-height: 1;
 }
 .db-item .icon-btn.del { color: var(--danger); }
+.db-item .icon-btn.log { color: var(--accent); font-size: 22px; font-weight: 600; }
+
+/* Meal editor */
+.me-results { max-height: 30vh; overflow-y: auto; margin-bottom: 8px; }
+.me-result {
+  padding: 11px 4px; border-top: 1px solid var(--line); cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600;
+}
+.me-result:first-child { border-top: none; }
+.me-result span { font-size: 12px; color: var(--muted); font-weight: 500; }
+.me-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0; border-top: 1px solid var(--line);
+}
+.me-item:first-of-type { border-top: none; }
+.me-item-name { flex: 1; font-size: 15px; font-weight: 600; min-width: 0; }
+.me-item .me-grams { width: 72px; flex: none; padding: 9px 8px; text-align: right; }
+.me-item .g { color: var(--muted); font-size: 13px; }
+.me-item .del { font-size: 20px; }
+.me-totals {
+  background: var(--bg); border-radius: 12px; padding: 12px; margin: 12px 0 16px;
+  text-align: center; font-size: 14px;
+}
+.me-totals b { font-size: 16px; }
 
 /* Scan overlay */
 .scan-overlay {
@@ -221,6 +262,12 @@ input:focus { border-color: var(--accent); }
 #scan-reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
 .scan-status { text-align: center; padding: 14px 18px; font-size: 14px; color: #d7d9de; min-height: 20px; }
 .scan-foot { padding: 0 18px calc(20px + env(safe-area-inset-bottom, 0px)); }
+.scan-manual { display: flex; gap: 8px; margin-top: 10px; }
+.scan-manual input {
+  flex: 1; border: 1px solid #444; background: #111; color: #fff;
+  border-radius: 12px; padding: 13px 14px; font-size: 16px;
+}
+.scan-manual .btn { margin-top: 0; width: auto; padding: 13px 18px; }
 
 /* Editor scroll (long form in sheet) */
 .sheet.tall { max-height: 88vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }

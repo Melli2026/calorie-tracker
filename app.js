@@ -6,6 +6,7 @@
   const GOAL_KEY = "ct_goal_v1";
   const CUSTOM_KEY = "ct_custom_foods_v1";
   const WATER_KEY = "ct_water_v1";
+  const RECIPES_KEY = "ct_recipes_v1";
 
   const DEFAULT_GOAL = { kcal: 2000, protein: 120, carbs: 230, fat: 65, water: 2000 };
 
@@ -33,6 +34,17 @@
   let goal = Object.assign({}, DEFAULT_GOAL, load(GOAL_KEY, {}));
   let customFoods = load(CUSTOM_KEY, []);
   let water = load(WATER_KEY, {}); // { "YYYY-MM-DD": ml }
+  let recipes = load(RECIPES_KEY, []); // saved meals/salads: { id, name, items:[{name, grams, kcal,protein,carbs,fat /*per100*/}] }
+
+  // Sum a recipe's items into total nutrition for the whole meal.
+  function recipeTotals(r) {
+    return (r.items || []).reduce((t, it) => {
+      const k = it.grams / 100;
+      t.kcal += it.kcal * k; t.protein += it.protein * k;
+      t.carbs += it.carbs * k; t.fat += it.fat * k; t.grams += it.grams;
+      return t;
+    }, { kcal: 0, protein: 0, carbs: 0, fat: 0, grams: 0 });
+  }
 
   // Ensure custom foods carry stable ids (for edit/delete) and a custom flag.
   let _migrated = false;
@@ -181,19 +193,19 @@
       <div class="meta">Set your targets for the day.</div>
       <div class="field-group">
         <label>Calories (kcal)</label>
-        <input type="number" id="g-kcal" value="${goal.kcal}" inputmode="numeric" />
+        <input type="text" id="g-kcal" value="${goal.kcal}" inputmode="decimal" />
       </div>
       <div class="row4" style="margin-bottom:16px;">
         <div><label style="font-size:13px;color:var(--muted);">Protein g</label>
-          <input type="number" id="g-pro" value="${goal.protein}" inputmode="numeric" /></div>
+          <input type="text" id="g-pro" value="${goal.protein}" inputmode="decimal" /></div>
         <div><label style="font-size:13px;color:var(--muted);">Carbs g</label>
-          <input type="number" id="g-carb" value="${goal.carbs}" inputmode="numeric" /></div>
+          <input type="text" id="g-carb" value="${goal.carbs}" inputmode="decimal" /></div>
         <div><label style="font-size:13px;color:var(--muted);">Fat g</label>
-          <input type="number" id="g-fat" value="${goal.fat}" inputmode="numeric" /></div>
+          <input type="text" id="g-fat" value="${goal.fat}" inputmode="decimal" /></div>
       </div>
       <div class="field-group">
         <label>Water (ml)</label>
-        <input type="number" id="g-water" value="${goal.water}" inputmode="numeric" />
+        <input type="text" id="g-water" value="${goal.water}" inputmode="decimal" />
       </div>
       <button class="btn" id="save-goal">Save</button>
       <button class="btn ghost" id="cancel-goal">Cancel</button>
@@ -251,31 +263,55 @@
     : histMetric === "kcal" ? totalsFor(dateStr).kcal
     : totalsFor(dateStr)[histMetric];
 
+  const metricGoal = () =>
+    histMetric === "kcal" ? goal.kcal
+    : histMetric === "water" ? goal.water
+    : goal[histMetric];
+
   function renderHistory() {
     const dates = rangeDates(histRange);
     const dense = histRange > 7;
     const vals = dates.map(metricValue);
-    const max = Math.max(...vals, 1);
+    const target = metricGoal() || 0;
+    // Scale so both the tallest bar and the goal line are visible.
+    const chartMax = Math.max(...vals, target, 1);
+    const SCALE = 0.9; // leave headroom at top for value labels / goal tag
     const active = vals.filter(v => v > 0);
     const avg = active.length ? active.reduce((a, b) => a + b, 0) / active.length : 0;
 
     document.getElementById("hist-title").textContent = `Last ${histRange} days`;
     document.getElementById("hist-avg").textContent =
       `${round(avg)} ${metricLabel[histMetric]}`;
+    document.getElementById("hist-goal").textContent = `${round(target)} ${metricLabel[histMetric]}`;
 
     const bars = document.getElementById("hist-bars");
     bars.classList.toggle("dense", dense);
     bars.innerHTML = dates.map((d, i) => {
-      const h = (vals[i] / max) * 100;
-      // For 30-day view only label roughly weekly to avoid clutter
-      const showDay = !dense || (dates.length - 1 - i) % 5 === 0;
-      const dayLabel = dense ? fmtDay(d, { day: "numeric" }) : fmtDay(d, { weekday: "short" }).slice(0, 2);
+      const h = (vals[i] / chartMax) * 100 * SCALE;
+      const overGoal = target && vals[i] > target;
+      const color = overGoal ? "var(--danger)" : metricColor[histMetric];
       return `
         <div class="bar-col">
           <div class="amt">${vals[i] ? round(vals[i]) : ""}</div>
-          <div class="fill" style="height:${h}%;background:${metricColor[histMetric]}"></div>
-          <div class="day">${showDay ? dayLabel : ""}</div>
+          <div class="fill" style="height:${h}%;background:${color}"></div>
         </div>`;
+    }).join("");
+    // Goal target line
+    if (target > 0) {
+      const line = document.createElement("div");
+      line.className = "target-line";
+      line.style.bottom = ((target / chartMax) * 100 * SCALE) + "%";
+      line.innerHTML = `<span>goal</span>`;
+      bars.appendChild(line);
+    }
+
+    // Day labels (sparser on the 30-day view)
+    const labels = document.getElementById("hist-labels");
+    labels.classList.toggle("dense", dense);
+    labels.innerHTML = dates.map((d, i) => {
+      const showDay = !dense || (dates.length - 1 - i) % 5 === 0;
+      const dayLabel = dense ? fmtDay(d, { day: "numeric" }) : fmtDay(d, { weekday: "short" }).slice(0, 2);
+      return `<div>${showDay ? dayLabel : ""}</div>`;
     }).join("");
 
     // daily log list (most recent first): any day with food or water
@@ -307,15 +343,25 @@
 
   function renderResults() {
     const q = searchEl.value.trim().toLowerCase();
-    const list = allFoods()
-      .filter(f => f.name.toLowerCase().includes(q))
-      .slice(0, 40);
+    const mealMatches = recipes.filter(r => r.name.toLowerCase().includes(q));
+    const list = allFoods().filter(f => f.name.toLowerCase().includes(q)).slice(0, 40);
     const box = document.getElementById("results");
-    if (!list.length) {
+    if (!mealMatches.length && !list.length) {
       box.innerHTML = `<div class="empty">No matches. Try “Add a custom food”.</div>`;
       return;
     }
-    box.innerHTML = list.map((f, i) => {
+    let html = mealMatches.map(r => {
+      const t = recipeTotals(r);
+      return `
+        <div class="result" data-meal="${r.id}">
+          <div>
+            <div class="name">🍲 ${escapeHtml(r.name)} <span class="badge">Meal</span></div>
+            <div class="meta">${round(t.kcal)} kcal · ${round(t.protein)}P ${round(t.carbs)}C ${round(t.fat)}F · whole meal</div>
+          </div>
+          <div class="add">＋</div>
+        </div>`;
+    }).join("");
+    html += list.map((f) => {
       const idx = allFoods().indexOf(f);
       return `
         <div class="result" data-idx="${idx}">
@@ -326,7 +372,13 @@
           <div class="add">＋</div>
         </div>`;
     }).join("");
-    box.querySelectorAll(".result").forEach(r =>
+    box.innerHTML = html;
+    box.querySelectorAll("[data-meal]").forEach(r =>
+      r.addEventListener("click", () => {
+        const rec = recipes.find(x => x.id === r.dataset.meal);
+        if (rec) openMealLogSheet(rec);
+      }));
+    box.querySelectorAll("[data-idx]").forEach(r =>
       r.addEventListener("click", () => openAddSheet(allFoods()[+r.dataset.idx])));
   }
 
@@ -348,7 +400,7 @@
       </div>
       <div class="qty-row">
         <label id="qty-label">${mode === "serving" ? "Servings" : "Grams"}</label>
-        <input type="number" id="qty" value="${mode === "serving" ? 1 : 100}" min="0" step="${mode === "serving" ? "0.5" : "10"}" inputmode="decimal" />
+        <input type="text" id="qty" value="${mode === "serving" ? 1 : 100}" min="0" step="${mode === "serving" ? "0.5" : "10"}" inputmode="decimal" />
       </div>
       <label style="font-size:13px;color:var(--muted);margin-bottom:6px;display:block;">Meal</label>
       <div class="seg meal-seg" id="meal-seg">
@@ -381,7 +433,10 @@
     document.getElementById("add-seg").querySelectorAll("button").forEach(b =>
       b.addEventListener("click", () => { state.mode = b.dataset.mode; rebuild(); }));
     document.getElementById("meal-seg").querySelectorAll("button").forEach(b =>
-      b.addEventListener("click", () => { state.meal = b.dataset.meal; rebuild(); }));
+      b.addEventListener("click", () => {
+        state.meal = b.dataset.meal;
+        document.querySelectorAll("#meal-seg button").forEach(x => x.classList.toggle("active", x === b));
+      }));
 
     document.getElementById("confirm-add").addEventListener("click", () => {
       const grams = computeGrams(food, state.mode, parseFloat(qty.value) || 0);
@@ -426,11 +481,14 @@
   document.getElementById("add-food-manual").addEventListener("click", () =>
     openFoodEditor({}, { title: "Add food" }));
   document.getElementById("scan-food").addEventListener("click", openScan);
+  document.getElementById("create-meal").addEventListener("click", () => openMealEditor());
 
   const dbSearchEl = document.getElementById("db-search");
   dbSearchEl.addEventListener("input", renderDb);
 
   function renderDb() {
+    ensureScanLib().catch(() => {}); // warm up the scanner so the camera can start on tap
+    renderMeals();
     const q = (dbSearchEl.value || "").trim().toLowerCase();
     const mine = customFoods.filter(f => f.name.toLowerCase().includes(q));
     const builtin = window.FOOD_DB.filter(f => f.name.toLowerCase().includes(q));
@@ -483,6 +541,191 @@
       }));
   }
 
+  /* ---------- meals / recipes ---------- */
+  function renderMeals() {
+    const q = (dbSearchEl.value || "").trim().toLowerCase();
+    const list = recipes.filter(r => r.name.toLowerCase().includes(q));
+    const box = document.getElementById("meal-list");
+    if (!list.length) { box.innerHTML = ""; return; }
+    let html = `<div class="db-count">My meals</div>`;
+    list.forEach(r => {
+      const t = recipeTotals(r);
+      html += `<div class="db-item">
+        <div class="info">
+          <div class="name">🍲 ${escapeHtml(r.name)} <span class="badge">Meal</span></div>
+          <div class="meta">${round(t.kcal)} kcal · P ${round(t.protein)} C ${round(t.carbs)} F ${round(t.fat)} · ${r.items.length} item${r.items.length !== 1 ? "s" : ""}</div>
+        </div>
+        <button class="icon-btn log" data-mlog="${r.id}" aria-label="Log">＋</button>
+        <button class="icon-btn edit" data-medit="${r.id}" aria-label="Edit">✎</button>
+        <button class="icon-btn del" data-mdel="${r.id}" aria-label="Delete">🗑</button>
+      </div>`;
+    });
+    box.innerHTML = html;
+    box.querySelectorAll("[data-mlog]").forEach(b =>
+      b.addEventListener("click", () => {
+        const r = recipes.find(x => x.id === b.dataset.mlog);
+        if (r) openMealLogSheet(r);
+      }));
+    box.querySelectorAll("[data-medit]").forEach(b =>
+      b.addEventListener("click", () => {
+        const r = recipes.find(x => x.id === b.dataset.medit);
+        if (r) openMealEditor(r);
+      }));
+    box.querySelectorAll("[data-mdel]").forEach(b =>
+      b.addEventListener("click", () => {
+        const r = recipes.find(x => x.id === b.dataset.mdel);
+        if (r && confirm(`Delete the meal "${r.name}"?`)) {
+          recipes = recipes.filter(x => x.id !== b.dataset.mdel);
+          save(RECIPES_KEY, recipes);
+          renderDb();
+        }
+      }));
+  }
+
+  // Build a meal/salad from database foods
+  function openMealEditor(recipe) {
+    const state = {
+      id: recipe ? recipe.id : null,
+      name: recipe ? recipe.name : "",
+      items: recipe ? recipe.items.map(i => Object.assign({}, i)) : [],
+    };
+
+    openSheet(`
+      <h3>${state.id ? "Edit meal" : "Create a meal"}</h3>
+      <div class="meta">Combine foods into a meal you can log in one tap later.</div>
+      <div class="fe-field"><label>Meal name</label>
+        <input type="text" id="me-name" value="${escapeHtml(state.name)}" placeholder="e.g. Chicken salad" /></div>
+      <div class="fe-field"><label>Add ingredient</label>
+        <input type="search" id="me-search" placeholder="Search foods…" autocomplete="off" /></div>
+      <div class="me-results" id="me-results"></div>
+      <div id="me-items"></div>
+      <div class="me-totals" id="me-totals"></div>
+      <button class="btn" id="me-save">Save meal</button>
+      <button class="btn ghost" id="me-cancel">Cancel</button>
+    `, true);
+
+    const itemsBox = document.getElementById("me-items");
+    const totalsBox = document.getElementById("me-totals");
+    const resultsBox = document.getElementById("me-results");
+    const meSearch = document.getElementById("me-search");
+
+    function renderItems() {
+      if (!state.items.length) {
+        itemsBox.innerHTML = `<div class="empty" style="padding:12px 0;">No ingredients yet — search above.</div>`;
+      } else {
+        itemsBox.innerHTML = state.items.map((it, i) => `
+          <div class="me-item">
+            <div class="me-item-name">${escapeHtml(it.name)}</div>
+            <input type="text" inputmode="decimal" class="me-grams" data-i="${i}" value="${it.grams}" /> <span class="g">g</span>
+            <button class="icon-btn del" data-rm="${i}" aria-label="Remove">×</button>
+          </div>`).join("");
+        itemsBox.querySelectorAll(".me-grams").forEach(inp =>
+          inp.addEventListener("input", () => {
+            const v = parseNum(inp.value);
+            state.items[+inp.dataset.i].grams = isNaN(v) ? 0 : v;
+            renderTotals();
+          }));
+        itemsBox.querySelectorAll("[data-rm]").forEach(b =>
+          b.addEventListener("click", () => {
+            state.items.splice(+b.dataset.rm, 1);
+            renderItems(); renderTotals();
+          }));
+      }
+    }
+    function renderTotals() {
+      const t = recipeTotals(state);
+      totalsBox.innerHTML = `<b>${round(t.kcal)} kcal</b> · P ${round(t.protein)} · C ${round(t.carbs)} · F ${round(t.fat)} · ${round(t.grams)} g total`;
+    }
+    renderItems(); renderTotals();
+
+    meSearch.addEventListener("input", () => {
+      const q = meSearch.value.trim().toLowerCase();
+      if (!q) { resultsBox.innerHTML = ""; return; }
+      const matches = allFoods().filter(f => f.name.toLowerCase().includes(q)).slice(0, 10);
+      resultsBox.innerHTML = matches.map((f, i) => {
+        const idx = allFoods().indexOf(f);
+        return `<div class="me-result" data-add="${idx}">${escapeHtml(f.name)} <span>${f.kcal} kcal/100g</span></div>`;
+      }).join("");
+      resultsBox.querySelectorAll("[data-add]").forEach(r =>
+        r.addEventListener("click", () => {
+          const f = allFoods()[+r.dataset.add];
+          state.items.push({ name: f.name, grams: f.serving || 100, kcal: f.kcal, protein: f.protein, carbs: f.carbs, fat: f.fat });
+          meSearch.value = ""; resultsBox.innerHTML = "";
+          renderItems(); renderTotals();
+        }));
+    });
+
+    document.getElementById("me-save").addEventListener("click", () => {
+      const name = document.getElementById("me-name").value.trim();
+      if (!name) { document.getElementById("me-name").focus(); return; }
+      if (!state.items.length) { alert("Add at least one ingredient."); return; }
+      const r = { id: state.id || uid(), name, items: state.items };
+      if (state.id) {
+        const i = recipes.findIndex(x => x.id === state.id);
+        if (i >= 0) recipes[i] = r; else recipes.unshift(r);
+      } else {
+        recipes.unshift(r);
+      }
+      save(RECIPES_KEY, recipes);
+      closeSheet();
+      renderDb();
+    });
+    document.getElementById("me-cancel").addEventListener("click", closeSheet);
+  }
+
+  // Log a saved meal to today (whole-meal portions)
+  function openMealLogSheet(recipe) {
+    const t = recipeTotals(recipe);
+    const state = { meal: defaultMeal() };
+    const build = () => `
+      <h3>${escapeHtml(recipe.name)}</h3>
+      <div class="meta">Whole meal: ${round(t.kcal)} kcal · P ${round(t.protein)} · C ${round(t.carbs)} · F ${round(t.fat)}</div>
+      <div class="qty-row">
+        <label>Portions</label>
+        <input type="text" inputmode="decimal" id="ml-qty" value="1" />
+      </div>
+      <label style="font-size:13px;color:var(--muted);margin-bottom:6px;display:block;">Meal</label>
+      <div class="seg meal-seg" id="ml-meal-seg">
+        ${MEALS.map(m => `<button data-meal="${m}" class="${m === state.meal ? "active" : ""}">${MEAL_LABEL[m]}</button>`).join("")}
+      </div>
+      <div class="preview" id="ml-preview"></div>
+      <button class="btn" id="ml-add">Add to today</button>
+      <button class="btn ghost" id="ml-cancel">Cancel</button>`;
+
+    function wire() {
+      const qty = document.getElementById("ml-qty");
+      const upd = () => {
+        const p = parseNum(qty.value) || 0;
+        document.getElementById("ml-preview").innerHTML = `
+          <div><div class="pv">${round(t.kcal * p)}</div><div class="pl">kcal</div></div>
+          <div><div class="pv">${round(t.protein * p)}</div><div class="pl">protein</div></div>
+          <div><div class="pv">${round(t.carbs * p)}</div><div class="pl">carbs</div></div>
+          <div><div class="pv">${round(t.fat * p)}</div><div class="pl">fat</div></div>`;
+      };
+      qty.addEventListener("input", upd); upd();
+      document.getElementById("ml-meal-seg").querySelectorAll("button").forEach(b =>
+        b.addEventListener("click", () => {
+          state.meal = b.dataset.meal;
+          document.querySelectorAll("#ml-meal-seg button").forEach(x => x.classList.toggle("active", x === b));
+        }));
+      document.getElementById("ml-add").addEventListener("click", () => {
+        const p = parseNum(qty.value) || 0;
+        if (p <= 0) return;
+        log.push({
+          id: uid(), date: todayStr(), name: recipe.name,
+          grams: t.grams * p, meal: state.meal, fromMeal: true,
+          kcal: t.kcal * p, protein: t.protein * p, carbs: t.carbs * p, fat: t.fat * p,
+        });
+        save(LOG_KEY, log);
+        closeSheet();
+        switchView("overview");
+      });
+      document.getElementById("ml-cancel").addEventListener("click", closeSheet);
+    }
+    openSheet(build(), true);
+    wire();
+  }
+
   /* ---------- food editor (manual / review-and-correct) ---------- */
   const veVal = (v) => (v === undefined || v === null || (typeof v === "number" && isNaN(v))) ? "" : v;
 
@@ -504,24 +747,24 @@
         <input type="text" id="fe-name" value="${escapeHtml(String(f("name")))}" placeholder="Food name" /></div>
       <div class="row3">
         <div class="fe-field"><label>Serving (g)</label>
-          <input type="number" id="fe-serv" value="${f("serving") || 100}" inputmode="decimal" /></div>
+          <input type="text" id="fe-serv" value="${f("serving") || 100}" inputmode="decimal" /></div>
         <div class="fe-field" style="grid-column: span 2;"><label>Serving label</label>
           <input type="text" id="fe-unit" value="${escapeHtml(String(f("unit") || "1 serving"))}" placeholder="e.g. 1 cup" /></div>
       </div>
       <div class="meta" style="margin:8px 0 10px;">Nutrition per 100 g / 100 ml</div>
       <div class="row3">
-        <div class="fe-field"><label>Calories</label><input type="number" id="fe-kcal" value="${f("kcal")}" inputmode="decimal" /></div>
-        <div class="fe-field"><label>Protein g</label><input type="number" id="fe-pro" value="${f("protein")}" inputmode="decimal" /></div>
-        <div class="fe-field"><label>Carbs g</label><input type="number" id="fe-carb" value="${f("carbs")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Calories</label><input type="text" id="fe-kcal" value="${f("kcal")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Protein g</label><input type="text" id="fe-pro" value="${f("protein")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Carbs g</label><input type="text" id="fe-carb" value="${f("carbs")}" inputmode="decimal" /></div>
       </div>
       <div class="row3">
-        <div class="fe-field"><label>Sugar g</label><input type="number" id="fe-sugar" value="${f("sugar")}" inputmode="decimal" /></div>
-        <div class="fe-field"><label>Fat g</label><input type="number" id="fe-fat" value="${f("fat")}" inputmode="decimal" /></div>
-        <div class="fe-field"><label>Sat. fat g</label><input type="number" id="fe-sat" value="${f("satFat")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Sugar g</label><input type="text" id="fe-sugar" value="${f("sugar")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Fat g</label><input type="text" id="fe-fat" value="${f("fat")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Sat. fat g</label><input type="text" id="fe-sat" value="${f("satFat")}" inputmode="decimal" /></div>
       </div>
       <div class="row3">
-        <div class="fe-field"><label>Fiber g</label><input type="number" id="fe-fiber" value="${f("fiber")}" inputmode="decimal" /></div>
-        <div class="fe-field"><label>Salt g</label><input type="number" id="fe-salt" value="${f("salt")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Fiber g</label><input type="text" id="fe-fiber" value="${f("fiber")}" inputmode="decimal" /></div>
+        <div class="fe-field"><label>Salt g</label><input type="text" id="fe-salt" value="${f("salt")}" inputmode="decimal" /></div>
         <div></div>
       </div>
       <button class="btn" id="fe-save">${opts.logAfter ? "Save & log" : "Save to database"}</button>
@@ -581,17 +824,23 @@
     return _scripts[src];
   }
 
-  async function openScan() {
+  const SCAN_LIB = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+  function ensureScanLib() { return loadScript(SCAN_LIB); }
+
+  function openScan() {
     scanEl.classList.add("open");
     SCAN.busy = false;
-    setScanStatus("Loading scanner…");
-    try {
-      await loadScript("https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js");
-    } catch (e) {
-      setScanStatus("Couldn't load the barcode scanner (offline?). Tap “Photograph the label” instead.");
-      return;
+    const mi = document.getElementById("scan-manual"); if (mi) mi.value = "";
+    // iOS only allows getUserMedia inside the tap gesture, so if the library is
+    // already loaded we start the camera synchronously (no await before start()).
+    if (window.Html5Qrcode) {
+      startBarcode();
+    } else {
+      setScanStatus("Loading scanner… if the camera doesn't start, type the barcode or photograph the label.");
+      ensureScanLib()
+        .then(() => { if (scanEl.classList.contains("open")) startBarcode(); })
+        .catch(() => setScanStatus("Couldn't load the scanner (offline?). Type the barcode or photograph the label."));
     }
-    startBarcode();
   }
 
   function startBarcode() {
@@ -682,6 +931,13 @@
     };
   }
 
+  // Manual barcode entry (reliable fallback if the camera won't scan)
+  document.getElementById("scan-manual-go").addEventListener("click", () => {
+    const code = (document.getElementById("scan-manual").value || "").replace(/\D/g, "");
+    if (code.length < 6) { setScanStatus("Enter a valid barcode (at least 6 digits)."); return; }
+    onBarcode(code);
+  });
+
   document.getElementById("scan-photo").addEventListener("click", () =>
     document.getElementById("ocr-file").click());
   document.getElementById("ocr-file").addEventListener("change", async (e) => {
@@ -692,14 +948,49 @@
     setScanStatus("Reading label… (this can take ~10–20s)");
     try {
       await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");
-      const { data } = await Tesseract.recognize(file, "eng");
+      const img = await preprocessImage(file);
+      const { data } = await Tesseract.recognize(img, "eng");
       const parsed = parseLabel(data.text || "");
       await closeScan();
       openFoodEditor(parsed, { source: "ocr", title: "Review scanned label" });
     } catch (err) {
-      setScanStatus("Couldn't read the label. You can enter the food manually instead.");
+      setScanStatus("Couldn't read the label. Type the barcode or enter the food manually.");
     }
   });
+
+  // Upscale + grayscale + contrast to make OCR more accurate on phone photos.
+  function loadImageFile(file) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = rej;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  async function preprocessImage(file) {
+    try {
+      const img = await loadImageFile(file);
+      const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      const scale = Math.min(Math.max(1600 / w, 1), 3); // upscale small images, cap 3x
+      const cw = Math.round(w * scale), ch = Math.round(h * scale);
+      const cv = document.createElement("canvas");
+      cv.width = cw; cv.height = ch;
+      const cx = cv.getContext("2d");
+      cx.drawImage(img, 0, 0, cw, ch);
+      const d = cx.getImageData(0, 0, cw, ch), px = d.data;
+      for (let i = 0; i < px.length; i += 4) {
+        let g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+        g = (g - 128) * 1.4 + 128;              // boost contrast
+        g = g < 0 ? 0 : g > 255 ? 255 : g;
+        px[i] = px[i + 1] = px[i + 2] = g;
+      }
+      cx.putImageData(d, 0, 0);
+      URL.revokeObjectURL(img.src);
+      return cv;
+    } catch (e) {
+      return file; // fall back to the raw file
+    }
+  }
 
   function parseLabel(text) {
     const t = " " + text.toLowerCase().replace(/,/g, ".") + " ";
@@ -734,8 +1025,10 @@
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeSheet(); });
 
   /* ---------- utils ---------- */
+  // Accept both "." and "," as decimal separators (locale-friendly).
+  const parseNum = (s) => parseFloat(String(s == null ? "" : s).replace(",", "."));
   function num(id, fallback) {
-    const v = parseFloat(document.getElementById(id).value);
+    const v = parseNum(document.getElementById(id).value);
     return isNaN(v) ? fallback : v;
   }
   function escapeHtml(s) {
