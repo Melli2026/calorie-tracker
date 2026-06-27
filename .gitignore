@@ -1,0 +1,3 @@
+# Local dev / preview artifacts
+.claude/
+.DS_Store
